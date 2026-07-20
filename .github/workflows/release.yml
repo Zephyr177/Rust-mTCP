@@ -3,6 +3,8 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  # Manual dry run: builds all targets but skips publishing the release.
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -20,6 +22,10 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+          - os: ubuntu-latest
+            target: aarch64-linux-android
           - os: windows-latest
             target: x86_64-pc-windows-msvc
           - os: macos-latest
@@ -34,6 +40,12 @@ jobs:
       - name: Install musl tools
         if: contains(matrix.target, 'musl')
         run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Configure Android NDK linker
+        if: contains(matrix.target, 'android')
+        # Pick the lowest available API level for widest device compatibility.
+        run: |
+          linker=$(find "$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin" -name 'aarch64-linux-android*-clang' | sort -V | head -n 1)
+          echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$linker" >> "$GITHUB_ENV"
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
@@ -56,6 +68,7 @@ jobs:
 
   release:
     name: Create release
+    if: github.ref_type == 'tag'
     needs: build
     runs-on: ubuntu-latest
     steps:
